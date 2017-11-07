@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<!--
+To change this license header, choose License Headers in Project Properties.
+To change this template file, choose Tools | Templates
+and open the template in the editor.
+-->
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.6.0/Chart.js"></script>
+    <script>
+        var url="immediate.php?type=";
+        window.chartColors = {
+            red: 'rgb(255, 128, 128)',
+            orange: 'rgb(255, 159, 64)',
+            yellow: 'rgb(255, 255, 64)',
+            green: 'rgb(75, 192, 192)',
+            blue: 'rgb(54, 162, 235)',
+            purple: 'rgb(153, 102, 255)',
+            grey: 'rgb(201, 203, 207)'
+        };
+        var colorSet = [window.chartColors.red, window.chartColors.orange, window.chartColors.yellow,
+                        window.chartColors.green, window.chartColors.blue, window.chartColors.purple];
+        var propertySet = ["voltageDC", "voltageAC", "currentDC", "currentAC", "wattage", "todayWatt"];
+        var hasCreate = false;
+        //set<number>
+        var idSet = new Set();
+        //the map sn<number> and Packing object
+        var indexMap = new Map();
+        
+        //chart時間刻度，要放到chart的參數之一
+        var timeAxis = new Array();
+        //存放各類型的圖表物件
+        window.chart = new Array();
+        var today,tomorrow,historyDate;
+        
+        function getYaxisPeriod(){
+            let date = monitorType == true? new Date() : new Date(historyDate);
+            date.setDate(date.getDate()-6);
+            today = getDateFormat(date);        
+            date.setDate(date.getDate()+1);
+            tomorrow = getDateFormat(date);
+            console.log("today is: "+today);
+        }
+        
+        function init(){
+            $.ajax({
+                url:url.concat("init"),
+                type:"get",
+                datatype:"json",
+                success:function(msg){
+                    console.log(msg);
+                    window.solar = JSON.parse(msg);
+                    
+                    for(i=0; i<window.solar.length; i++){
+                        var option = new Option(window.solar[i].cname, window.solar[i].no);
+                        $("#solar_factory").append(option);
+                    }
+                    
+                    changeFactory();
+                    drawChart();
+                    $("input[name=date]").datepicker({
+                        dateFormat: 'yy/mm/dd'
+                    });
+                    initMonitorHtml();
+                    setInterval("updateChart()", 5*60*1000);
+                }
+            });
+        }
+        
+        var monitorType =true;
+        function initMonitorHtml(){
+            $("#monitor").text(monitorType == true? "start": "stop");
+        }
+        
+        function checkHistory(){
+            if(monitorType) return;
+            
+            let arg = $("input[name=date]").val();
+            historyDate = arg == ""? "2017/10/31" : arg;
+            updateChart();
+        }
+        
+        function on_select_factory(){
+            changeFactory();
+            drawChart();
+        }
+        
+        function clearChartData(){
+            for(let packing of indexMap.values()){
+                packing.clear();
+            }
+            timeAxis.length = 0;
+        }
+        
+        function changeFactory(){
+            var index = $("#solar_factory").val();
+            console.log("change fact id: "+index)
+            
+            if(hasCreate){
+                clearChartData();
+                window.chart.size = 0;
+                hasCreate = false;
+            }
+            
+            idSet.clear();
+            indexMap.clear();
+            //var i = 0;
+            for(var key in window.solar){
+                var obj = window.solar[key];
+                if(index == obj.no){
+                    for(j=0;j<obj.amount;j++){
+                        var id = parseInt(obj.id) + j;
+                        var option = new Option(j+1, id);
+                        //$("#inverterNo").append(option);
+                        
+                        idSet.add(id);
+                        if(!indexMap.has(id)){
+                            //var color = colorSet.pop();
+                            let color = colorSet[j];
+                            indexMap.set(id, new Packing(j+1, color));
+                        }
+                    }
+                    break;
+                }
+              //  i++;
+            }
+        }
+        
+        //逆變器資料封裝
+        function Packing(id, color){
+            this.id = id;
+            this.color = color;
+            this.voltageDC = new Array();
+            this.voltageAC = new Array();
+            this.currentDC = new Array();
+            this.currentAC = new Array();
+            this.wattage = new Array();
+            this.todayWatt = new Array();
+        }
+        Packing.prototype.push = function(property, value){
+            this[property].push(value);
+        }
+        Packing.prototype.clear = function(){
+            for(var key in propertySet){
+                this[propertySet[key]].length = 0;
+            }
+        }
+        
+        //chart config encapsulation
+        function ChartConfig(xydataset){
+            this.data = xydataset;
+        }
+        ChartConfig.prototype.type = "line";
+        ChartConfig.prototype.chartName = function(name){
+            this.options = {title:{
+                    display:true,
+                    text:name
+            }};
+        }
+        function XYDataSet(Xarray){
+            this.labels = Xarray;
+            this.datasets = new Array();
+        }
+        XYDataSet.prototype.push = function(name, Yarray, color){
+            this.datasets.push({
+                label:name,
+                data:Yarray,
+                backgroundColor:color,
+                borderColor:color,
+                fill:false
+                });
+        }
+        
+        function getDateFormat(date){
+            console.log(typeof(date));
+            var separate = "/";
+            var year = date.getFullYear();
+            var month = date.getMonth()+1;
+            var day = date.getDate();
+            return year + separate + month + separate + day;
+        }
+        
+        function updateChart(){
+            if(!monitorType) return;
+            for(let packing of indexMap.values()){
+                packing.clear();
+            }
+            timeAxis.length = 0;
+            
+            drawChart();
+        }
+        
+        function ajax_updateChart(msg){
+            var interimIdSet = new Set();
+            var timeSet = new Set();
+            var jsonObj = JSON.parse(msg);
+            let cmpTime;
+            for(var key in jsonObj){
+                var id = parseInt(jsonObj[key].sn);
+                if(key == 0){
+                    cmpTime = jsonObj[key].stamp;
+                }
+                
+                timeSet.add(jsonObj[key].stamp);
+                
+                if(cmpTime != jsonObj[key].stamp){
+                    for(let id_tmp of idSet){
+                        let bool = interimIdSet.has(id_tmp);
+                        if(!bool){
+                            let pack = indexMap.get(id_tmp);
+                            for(let i in propertySet){
+                                pack.push(propertySet[i], null);
+                            }
+                        }
+                    }
+                    cmpTime = jsonObj[key].stamp;
+                    interimIdSet.clear();
+                }
+                let solarSet = indexMap.get(id);
+                for(let i in propertySet){
+                    solarSet.push(propertySet[i], jsonObj[key][propertySet[i]]);
+                }
+                interimIdSet.add(id);
+            }
+
+            for(let time of timeSet){
+                timeAxis.push(time);
+            }
+            if(hasCreate){
+                for(let chart of window.chart){
+                    chart.update();
+                }
+                //window.chart.update();
+            } else {
+                createChart();
+                hasCreate = true;
+            }
+        }
+                
+        function createChart(){
+            var chartConfig;
+            for(let property of propertySet){
+                var xydataset = new XYDataSet(timeAxis);
+                for(let key of indexMap.keys()){
+                    xydataset.push(indexMap.get(key)["id"], indexMap.get(key)[property],indexMap.get(key)["color"]);
+                }
+                chartConfig = new ChartConfig(xydataset);
+                chartConfig.chartName(property);
+                window.chart.push(new Chart($("#"+property),chartConfig));
+            }
+        }
+        
+        function drawChart(){
+            getYaxisPeriod();
+            $.ajax({
+                url:url.concat("req"),
+                data:{start:today, end:tomorrow,no:$("#solar_factory").val()},
+                type:"get",
+                datatype:"json",
+                success:function(msg){
+                    ajax_updateChart(msg)
+                }
+            })
+        }
+        
+
+        function switchType(){
+            monitorType = !monitorType;
+            initMonitorHtml();
+            console.log(monitorType);
+        }
+        $().ready(init());
+    </script>
+</head>
+<body>
+    <form id="form">
+        <select name="solar_factory" id="solar_factory" onchange="on_select_factory()"></select>
+        <input id="date" name="date" >
+        <input type="button" value="submit" onclick="checkHistory()">        
+    </form>
+    <button id="monitor" onclick="switchType()"></button>
+    <canvas id="voltageDC"></canvas>
+    <canvas id="voltageAC"></canvas>
+    <canvas id="currentDC"></canvas>
+    <canvas id="currentAC"></canvas>
+    <canvas id="wattage"></canvas>
+    <canvas id="todayWatt"></canvas>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.6.0/Chart.js"></script>
+</head>
+
+    <script>
+        var urlPrefix = "queryCity.php?type=";
+        var config = {
+            type:"line",
+            data: {labels:["1","2"],
+                    datasets:[{
+                        label:"first",
+                        data:["0","0"]
+                    }]
+
+            }};
+            console.log(config);
+        var chart = new Chart($("#chart"),config);
+
+        $().ready( funA("init") );
+
+        function funA(type){
+            var url = urlPrefix.concat(type);
+            $.ajax({
+                url:url,
+                data:$("#form").serialize(),
+                type:"get",
+                datatype:"json",
+                success:function(msg){
+                    console.log(msg);
+                    var obj = JSON.parse(msg);
+                    //console.log(obj);
+                    var length = obj.length;
+                    var type = obj[length-1];
+                    if(type == "init"){
+                        for(i =0; i < 3; i++){
+                            var dom;
+                            if( i == 0)
+                                dom = $("#area");
+                            else if(i == 1)
+                                dom = $("#city");
+                            else
+                                dom = $("#station");
+                            
+                            for( j = 0; j < obj[i].length; j++){
+                                var op = new Option(obj[i][j].name, obj[i][j].no);
+                                dom.append(op);
+                            }
+                        }
+                    }
+                    rebuild(msg);
+                    if(type == "submit"){
+                        var json = obj[0];
+                        console.log(json);
+                        //config.data = json;
+                        //chart.update();
+                        char = new Chart($("#chart"), {type: 'line', data: json});
+                    }
+                }
+            }).then(function(msg){
+                
+            });
+
+        }
+
+        function rebuild(msg){
+            var array = JSON.parse(msg);
+            var type = array[array.length-1];
+            switch(type){
+                case "area":
+                    $("#city option").remove();
+                    for(i=0; i<array[0].length; i++){
+                        var opCity = new Option(array[0][i].name, array[0][i].no);
+                        $("#city").append(opCity);
+                    }
+                case "city":
+                    $("#station option").remove();
+                    var cityObj = type == "city"? array[0][0]: array[1][0]; 
+                        var opSt = new Option(cityObj.name, cityObj.no);
+                        $("#station").append(opSt);
+            }
+        }
+    </script>
+<body>
+<form id="form">
+    <select name="area" id="area" onchange="funA('area')"></select>
+    <select name="city" id="city" onchange="funA('city')"></select>
+    <select name="station" id="station" onchange="funA('station')"></select>
+    <input id="a1" type="button" value="submit" onclick="funA('submit')"/>
+</form>
+<br>
+<div style="width:600px;height:600px">
+    <canvas id="chart"></csnvas>
+</div>
+</body>
+</html>

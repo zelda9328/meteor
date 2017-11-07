@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.6.0/Chart.js"></script>
+    <script>
+        var urlPrefix = "queryCity.php?type=";
+        var defaultChartData = {labels:["1","2"],datasets:[{label:"first",data:["0","0"]}]};
+        var config = {
+            type:"line",
+            data: defaultChartData
+            };
+            
+        var solarConfig = {
+            type:"line",
+            data: defaultChartData
+            };
+
+        $().ready(funA("init"));
+
+        function funA(type){
+            var url = urlPrefix.concat(type);
+            $.ajax({
+                url:url,
+                data:$("#form").serialize(),
+                type:"get",
+                datatype:"json",
+                success:function(msg){
+                    var obj = JSON.parse(msg);
+                    var length = obj.length;
+                    var type = obj[length-1];
+                    if(type == "init"){
+                        window.chart = new Chart($("#chart"),config);
+                        for(i =0; i <= 3; i++){
+                            if( i == 0)
+                                dom = $("#area");
+                            else if(i == 1)
+                                dom = $("#city");
+                            else
+                                dom = $("#station");
+                            for( j = 0; j < obj[i].length; j++){
+                                var op = new Option(obj[i][j].name, obj[i][j].no);
+                                dom.append(op);
+                            }
+                        }
+                        
+                        window.solar = obj[length-2];
+                        window.solarChart = new Chart($("#solarchart"),solarConfig);
+                        for(i = 0; i < window.solar.length; i++){                            
+                            $("#solar_factory").append(new Option(window.solar[i].cname, window.solar[i].factoryNo));
+                        }
+                        
+                        for(i =1; i <=window.solar[0].amount; i++){
+                            var no = parseInt(window.solar[0].no)+i-1;
+                            $("#inverterNo").append(new Option(i, no));
+                        }
+                    }
+                    rebuild(msg);
+                    //傳入的點座標重繪及統計y
+                    if(type == "submit"){
+                        var json = obj[0];
+                        if(!json.labels.length == 0){
+                            config.data = json;                            
+                        } else{
+                            config.data = defaultChartData;
+                        }
+                        window.chart.update();
+                        
+                        var data = json.datasets[0].data;
+                        var sum = 0; 
+                        data.forEach(function(e){
+                           sum += parseFloat(e);
+                        });
+                        $("#sum").text(sum.toFixed(1));
+                        
+                        if(!obj[1].labels.length == 0){
+                            solarConfig.data = obj[1];
+
+                        } else{
+                            solarConfig.data = defaultChartData;
+                        }
+                        window.solarChart.update();
+                    }
+                }
+            }).then(function(msg){
+                
+            });
+
+        }
+
+        function funB(){
+            $("#inverterNo option").remove();
+            for(i = 0; i<=window.solar.length; i++){
+                var nameCmp = $("#solar_factory :selected").text();
+                if(nameCmp == window.solar[i].cname){
+                    var index = i;
+                    break;
+                }
+            }            
+            for(i =1; i <=window.solar[index].amount; i++){
+                var no = parseInt(window.solar[index].no)+i-1;
+                $("#inverterNo").append(new Option(i, no));
+            }
+        }
+        
+        function getpower(){
+            $.ajax({
+                url:"getPower.php",
+                data:{id:$("#inverterNo :selected").text()},
+                type:"get",
+                datatype:"json",
+                success:function(msg){
+                    var power = JSON.parse(msg);
+                    var value = power.length != 0? power[0].power : 0;
+                    $("#powerVal").text(value);
+                }
+            });
+        }
+        
+        function rebuild(msg){
+            var array = JSON.parse(msg);
+            var type = array[array.length-1];
+            switch(type){
+                case "area":
+                    $("#city option").remove();
+                    for(i=0; i<array[0].length; i++){
+                        var opCity = new Option(array[0][i].name, array[0][i].no);
+                        $("#city").append(opCity);
+                    }
+                case "city":
+                    $("#station option").remove();
+                    var cityObj = type == "city"? array[0][0]: array[1][0]; 
+                    var opSt = new Option(cityObj.name, cityObj.no);
+                    $("#station").append(opSt);
+            }
+        }
+    </script>
+</head>
+
+<body>
+<form id="form">
+    <select name="area" id="area" onchange="funA('area')"></select>
+    <select name="city" id="city" onchange="funA('city')"></select>
+    <select name="station" id="station"></select>
+    <input name="time1" type="date">
+    <input name="time2" type="date"><br>
+    <select name="solar_factory" id="solar_factory" onchange="funB()"></select>
+    <select name="inverterNo" id="inverterNo" ></select>
+    <label style="width: 100px" id="powerVal"></label>
+    <input id="a1" type="button" value="submit" onclick="funA('submit')">
+</form>
+    <a href="./immediate.html">即時畫面</a>
+<div>
+<p id="sum"><p>
+</div>
+<br>
+<div style="width:600px;height:600px">
+    <canvas id="chart"></canvas>
+</div>
+<div style="width:600px;height:600px">
+    <canvas id="solarchart"></canvas>
+</div>
+</body>
+</html>

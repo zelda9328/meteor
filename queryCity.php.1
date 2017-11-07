@@ -1,0 +1,152 @@
+<?php
+    date_default_timezone_set("Asia/Taipei");
+    $dsn = "mysql:host=localhost;dbname=meteor;charset=utf8";
+    $dbh = new PDO($dsn, "root", "");
+    $dbh->exec("set names utf8");
+
+    openlog("query", null, LOG_LOCAL1);
+
+    $type = $_GET["type"];
+    //$type = "init";
+    syslog(LOG_INFO, "type is " . $type);
+    $arr = array();
+        $queryArea = "select no,area as name from area";
+        $queryCity = 'select no,city as name from city join station on city.no=station.cityNo where areaNo=:area and station.id like "4%"';
+        $queryStation = "select id as no,name from station where cityNo=:city";
+    if($type == "init"){
+
+        $ps = $dbh->query($queryArea);
+        $rsArea = $ps->fetchAll(PDO::FETCH_ASSOC);
+
+        $ps = $dbh->prepare($queryCity);
+        $ps->execute(array(":area" => $rsArea[0]["no"]));
+        $rsCity = $ps->fetchAll(PDO::FETCH_ASSOC);
+
+        $ps = $dbh->prepare($queryStation);
+        $ps->execute(array(":city" => $rsCity[0]["no"]));
+        $rsStation = $ps->fetchAll(PDO::FETCH_ASSOC);
+
+        $pack = array($rsArea, $rsCity, $rsStation);
+        $pack[] = $type;
+
+        //內容物型態：陣列，三個陣列型，一個type value
+        $pk = json_encode($pack);
+        echo $pk;
+        die();
+    } else if($type == "area"){
+        $property = "area";
+        $area = $_GET[$property];
+        $arr[":area"] = $area;
+
+
+
+        die();
+    } else if($type == "city"){
+        $property = "city";
+        $area = $_GET["area"];
+        $city = $_GET[$property];
+        syslog(LOG_INFO, "area is: " . $area . " and city: " . $city);
+        $sql = "select name,id from station join city on station.cityNo=city.no join area on city.areaNo=area.no where area.area=:area and city.city=:city";
+        $arr[":area"] = $area;
+        $arr[":city"] = $city;
+    } else if($type == "forward"){
+        $arr = array(status => 302, location => "http://e-service.cwb.gov.tw/HistoryDataQuery/YearDataController.do?command=viewMain&station=466910&stname=%25E9%259E%258D%25E9%2583%25A8&datepicker=2016");
+        echo Json_encode($arr);
+        die();
+    } else if($type == "submit"){
+        $firstDate = strtotime("2016-1-1");
+        $overDate = strtotime("2016-2-1");
+        $conditionDate = $firstDate;
+            //$sql = 'select sum(sun) from messure where id = :id and obsTime >= :start and obsTime < :end';
+            $sql = "select sun from messureByDay where id = :id and calendar >= :start and calendar < :end";
+            $sqlPre = $dbh->prepare($sql);
+//            $total = array();
+//            $index = -1;
+
+//$_GET["station"] = 466880;
+            $innArr = array(":id" => $_GET["station"],":start" => date("Y-m-d", $firstDate),":end" => date("Y-m-d", $overDate));
+            $sqlPre->execute($innArr);
+            //$rs = $dbh->query("show warnings");
+            $row = $sqlPre->fetchAll(PDO::FETCH_ASSOC);
+            //var_dump($row);
+            $row1 = array();
+            foreach($row as $r1){
+            $row1[] = $r1["sun"];
+            }
+            //var_dump($row1);
+//            ob_start();
+            //var_dump($innArr);
+            //var_dump($rs->fetchAll());
+            //var_dump($row);
+//            $obCon = ob_get_contents();
+            //syslog(LOG_INFO, "get sun content " . $obCon);
+//            ob_end_clean();
+
+/*
+        do{
+            $conditionDate = strtotime("+1day", $conditionDate);
+            if(date("d", $firstDate) == "01"){
+                $index++;
+                $total[$index] = 0;
+            }
+            //$innArr = array(":id" => 467770,
+            $innArr = array(":id" => $_GET["station"],
+                    ":start" => date("Y-m-d", $firstDate), 
+                    ":end" => date("Y-m-d", $conditionDate));
+            $sqlPre->execute($innArr);
+            $row = $sqlPre->fetchAll(PDO::FETCH_ASSOC);
+            ob_start();
+            $obCon = ob_get_contents();
+            ob_get_contents();
+            syslog(LOG_INFO, "get sun content " . $obCon);
+            ob_end_clean();
+
+                $total[$index] += $row[0]["sum(sun)"];
+            //var_dump($row);
+            $firstDate = $conditionDate;
+        }while($conditionDate < $overDate);
+*/
+
+        $data = array("type" => "submit");
+//        $month = array("January","February","March","April","May","June","July","August","September","October","November","December");
+        //$dataY = array(28,48,40,19,96,27,100);
+        //$dataY = array("data" => array(28,48,40,19,96,27,100));
+        //var_dump($total);
+        //die();
+        $month = array();
+        $length = sizeof($row1);
+        for($i =1; $i<=$length; $i++){
+            $month[] = $i;
+        }
+
+        $dataY = array("data" => $row1);
+        $member = array($dataY);
+        $chartData = array("labels" => $month);
+        $chartData["datasets"] = $member;
+        $data["chart"] = $chartData;
+        $data1 = '{type: submit},
+        {labels : ["January","February","March","April","May","June","July"],
+           datasets : [{backgroundColor: window.chartColors.red,
+                        label:"first",
+                        data : [65,59,90,-81,56,55,-40]
+                        },
+                    {   backgroundColor: window.chartColors.red,
+                        borderColor: window.chartColors.blue,
+                        label:"second",
+                        data : [28,48,40,19,96,27,100]
+                        }]}';
+        $json = json_encode($data);
+        echo $json;
+        closelog();
+        die();
+    }
+
+    $sqlPre = $dbh->prepare($sql);
+    //$sqlPre->execute(array(":area" => $area));
+    $sqlPre->execute($arr);
+    $row = $sqlPre->fetchAll(PDO::FETCH_ASSOC);
+    $row["type"] = $type;
+    $json = json_encode($row);
+    closelog();
+    echo $json;
+?>
