@@ -1,9 +1,4 @@
 <!DOCTYPE html>
-<!--
-To change this license header, choose License Headers in Project Properties.
-To change this template file, choose Tools | Templates
-and open the template in the editor.
--->
 <html>
 <head>
     <meta charset="UTF-8">
@@ -11,19 +6,10 @@ and open the template in the editor.
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.6.0/Chart.js"></script>
+    <script src="./js/function.js"></script>
     <script>
         var url="immediate.php?type=";
-        window.chartColors = {
-            red: 'rgb(255, 128, 128)',
-            orange: 'rgb(255, 159, 64)',
-            yellow: 'rgb(255, 255, 64)',
-            green: 'rgb(75, 192, 192)',
-            blue: 'rgb(54, 162, 235)',
-            purple: 'rgb(153, 102, 255)',
-            grey: 'rgb(201, 203, 207)'
-        };
-        var colorSet = [window.chartColors.red, window.chartColors.orange, window.chartColors.yellow,
-                        window.chartColors.green, window.chartColors.blue, window.chartColors.purple];
+
         var propertySet = ["voltageDC", "voltageAC", "currentDC", "currentAC", "wattage", "todayWatt"];
         var hasCreate = false;
         //set<number>
@@ -36,10 +22,12 @@ and open the template in the editor.
         //存放各類型的圖表物件
         window.chart = new Array();
         var today,tomorrow,historyDate;
+        //接收setInterval()的回傳值
+        var periodId;
         
         function getYaxisPeriod(){
             let date = monitorType == true? new Date() : new Date(historyDate);
-            date.setDate(date.getDate()-6);
+            //date.setDate(date.getDate()-6);
             today = getDateFormat(date);        
             date.setDate(date.getDate()+1);
             tomorrow = getDateFormat(date);
@@ -65,8 +53,9 @@ and open the template in the editor.
                     $("input[name=date]").datepicker({
                         dateFormat: 'yy/mm/dd'
                     });
+                    $("#history").off("click");
                     initMonitorHtml();
-                    setInterval("updateChart()", 5*60*1000);
+                    periodId = setInterval("updateChart()", 5*60*1000);
                 }
             });
         }
@@ -77,8 +66,6 @@ and open the template in the editor.
         }
         
         function checkHistory(){
-            if(monitorType) return;
-            
             let arg = $("input[name=date]").val();
             historyDate = arg == ""? "2017/10/31" : arg;
             updateChart();
@@ -108,72 +95,24 @@ and open the template in the editor.
             
             idSet.clear();
             indexMap.clear();
-            //var i = 0;
+            
             for(var key in window.solar){
                 var obj = window.solar[key];
                 if(index == obj.no){
-                    for(j=0;j<obj.amount;j++){
-                        var id = parseInt(obj.id) + j;
-                        var option = new Option(j+1, id);
-                        //$("#inverterNo").append(option);
-                        
+                    obj.ids.forEach(function(value){
+                        let id = parseInt(value);
                         idSet.add(id);
                         if(!indexMap.has(id)){
-                            //var color = colorSet.pop();
-                            let color = colorSet[j];
-                            indexMap.set(id, new Packing(j+1, color));
+                            let color = window.colorSet[id-1];
+                            indexMap.set(id, new Packing(id, color));
                         }
-                    }
+                    })
                     break;
                 }
-              //  i++;
             }
         }
         
-        //逆變器資料封裝
-        function Packing(id, color){
-            this.id = id;
-            this.color = color;
-            this.voltageDC = new Array();
-            this.voltageAC = new Array();
-            this.currentDC = new Array();
-            this.currentAC = new Array();
-            this.wattage = new Array();
-            this.todayWatt = new Array();
-        }
-        Packing.prototype.push = function(property, value){
-            this[property].push(value);
-        }
-        Packing.prototype.clear = function(){
-            for(var key in propertySet){
-                this[propertySet[key]].length = 0;
-            }
-        }
-        
-        //chart config encapsulation
-        function ChartConfig(xydataset){
-            this.data = xydataset;
-        }
-        ChartConfig.prototype.type = "line";
-        ChartConfig.prototype.chartName = function(name){
-            this.options = {title:{
-                    display:true,
-                    text:name
-            }};
-        }
-        function XYDataSet(Xarray){
-            this.labels = Xarray;
-            this.datasets = new Array();
-        }
-        XYDataSet.prototype.push = function(name, Yarray, color){
-            this.datasets.push({
-                label:name,
-                data:Yarray,
-                backgroundColor:color,
-                borderColor:color,
-                fill:false
-                });
-        }
+
         
         function getDateFormat(date){
             console.log(typeof(date));
@@ -185,7 +124,6 @@ and open the template in the editor.
         }
         
         function updateChart(){
-            if(!monitorType) return;
             for(let packing of indexMap.values()){
                 packing.clear();
             }
@@ -272,6 +210,14 @@ and open the template in the editor.
             monitorType = !monitorType;
             initMonitorHtml();
             console.log(monitorType);
+            if(monitorType){
+                $("#history").off("click");
+                periodId = setInterval("updateChart()", 5*60*1000);
+                updateChart();
+            } else {
+                clearInterval(periodId);
+                $("#history").on("click", checkHistory);
+            }
         }
         $().ready(init());
     </script>
@@ -280,7 +226,7 @@ and open the template in the editor.
     <form id="form">
         <select name="solar_factory" id="solar_factory" onchange="on_select_factory()"></select>
         <input id="date" name="date" >
-        <input type="button" value="submit" onclick="checkHistory()">        
+        <input id="history" type="button" value="submit">        
     </form>
     <button id="monitor" onclick="switchType()"></button>
     <canvas id="voltageDC"></canvas>

@@ -1,4 +1,8 @@
 <?php
+/*
+ * 除了做氣象站查詢鄉鎮地方之外
+ * 還有太陽能歷史發電查詢
+ */
     include("libs/TaskEnum.php");
     include("libs/baseSetting.php");
     
@@ -8,7 +12,7 @@
     
     $type = $_GET["type"];
     //$type = "init";
-    syslog(LOG_INFO, "type is " . $type);
+    //syslog(LOG_INFO, "type is " . $type);
     $queryArea = "select no,area as name from area";
     $queryCity = 'select no,city as name from city join station on city.no=station.cityNo where areaNo=:area and station.id like "4%"';
     $queryStation = "select id as no,name from station where cityNo=:city";
@@ -41,11 +45,34 @@
         $pack[] = $rsArea;
         
         //solar query
-        $ps = $dbh->query("select solar.factory.no as factoryNo,solar.factory.cname,solar.inverter.no,count(solar.inverter.sn)as amount from solar.inverter join solar.factory
-on solar.inverter.appertain = solar.factory.no
-group by solar.factory.cname
-order by appertain,sn");
-        $solar = $ps->fetchAll(PDO::FETCH_ASSOC);
+        /*
+         * 放棄使用id控制資料源，以下mark
+         */
+        /*
+        $solar = array();
+        $ps = $dbh->query("select solar.factory.no as factoryNo,solar.factory.cname from solar.factory "
+                . "order by solar.factory.no");
+        while($row = $ps->fetch(PDO::FETCH_ASSOC)){
+            
+            $psInner = $dbh->prepare("select solar.inverter.no, solar.inverter.sn from solar.inverter "
+                    . "join solar.factory on solar.inverter.appertain=solar.factory.no "
+                    . "where solar.factory.no = :no order by solar.inverter.sn");
+            $psInner->execute(array(":no"=>$row["factoryNo"]));
+            $no = array();
+            $sn = array();
+            while($rowInner = $psInner->fetch(PDO::FETCH_ASSOC)){
+                $no[] = $rowInner["no"];
+                $sn[] = $rowInner["sn"];
+            }
+            $arrayObj = array();
+            $arrayObj["no"] = $row["factoryNo"];
+            $arrayObj["cname"] = $row["cname"];
+            $arrayObj["inverterkey"] = $no;
+            $arrayObj["id"] = $sn;
+            $solar[] = $arrayObj;
+        }
+         
+         */
     }
     if($task >= TaskEnum::area){
         //初值是拿資料庫的第一筆，如果有傳值則替代
@@ -70,10 +97,10 @@ order by appertain,sn");
         $pack[] = $rsStation;
     }
     if($task == TaskEnum::submit){
-        $srcTime1 = $_GET["time1"];
-        $srcTime2 = $_GET["time2"];
+        $srcTime1 = $_GET["start"];
+        $srcTime2 = $_GET["end"];
         $firstDate = strtotime($srcTime1);
-        $overDate = strtotime($srcTime2);
+        $overDate = strtotime("1 day",strtotime($srcTime2));
         //syslog(LOG_INFO, "time1 is " . $firstDate);
         //syslog(LOG_INFO, "tim2 is " . $overDate);
         if($firstDate==false || $overDate==false)   die();
@@ -88,24 +115,19 @@ order by appertain,sn");
         $row = $sqlPre->fetchAll(PDO::FETCH_ASSOC);
         //var_dump($row);
         $rowSun = array();
-        $rowcal = array();
+        $rowCal = array();
         foreach($row as $r1){
             $rowSun[] = $r1["sun"];
             $rowCal[] = date(def_dateFormat, strtotime($r1["calendar"]));
         }
 
-        /*
-        $month = array();
-        $length = sizeof($row1);
-        for($i =1; $i<=$length; $i++){
-            $month[] = $i;
-        }*/
 
         //依照chart.js規範做成資料源
         $dataY = array("data" => $rowSun);
         $member = array($dataY);
         //$chartData = array("labels" => $month);
         //$chartData["datasets"] = $member;
+        /*
         $data1 = '{type: submit},
         {labels : ["January","February","March","April","May","June","July"],
            datasets : [{backgroundColor: window.chartColors.red,
@@ -118,22 +140,27 @@ order by appertain,sn");
                         data : [28,48,40,19,96,27,100]
                         }]}';
         //$json = json_encode($data);
+         */
         $data["labels"] = $rowCal;
         $data["datasets"] =$member;
         $pack[] = $data;
-        
+        /*
         $getSolarPower_sql = "select power,date from solar.historyPow "
                 . "where no=:station and date >= adddate(:start, interval 1 day) "
                 . "and date < adddate(:end, interval 1 day) order by date";
         $sqlPre = $dbh->prepare($getSolarPower_sql);
         $innArr = array(":station" => $_GET["inverterNo"],":start" => date("Y-m-d", $firstDate),":end" => date("Y-m-d", $overDate));
+         * 
+         */
+        /*
         ob_start();
         var_dump($innArr);
         $obCon = ob_get_contents();
         syslog(LOG_INFO,"get var dump: " . $obCon);
         syslog(LOG_INFO,"sql: " . $getSolarPower_sql);
         ob_end_clean();
-        
+        */
+        /*
         $sqlPre->execute($innArr);
         $row = $sqlPre->fetchAll(PDO::FETCH_ASSOC);
         
@@ -144,20 +171,18 @@ order by appertain,sn");
             $stamp = strtotime($r["date"]);
             $power_timestamp[] = date(def_dateFormat, strtotime("-1 day", $stamp));
         }
-        /*
-        $amount = sizeof($powerArray);
-        $day = array();
-        for($i=1; $i<=$amount; $i++){
-            $day[] = $i;
-        }
-         * */
+        
         $solardataY = array("data" => $powerArray);
         $member = array($solardataY);
+         
         $solardata["datasets"] = $member;
         $solardata["labels"] = $power_timestamp;
-        $pack[] = $solardata;
+         * 
+         */
+        //$pack[] = $solardata;
+        $pack[] = queryHistoryPow($_GET["solar_factory"], $firstDate, $overDate);
         
-        closelog();
+        //closelog();
     }
     
     if($task == 0){        
@@ -171,5 +196,24 @@ order by appertain,sn");
 
     $pk = json_encode($pack);
     echo $pk;
-    die();
+    //die();
+    
+    function queryHistoryPow($no, $firstDate, $overDate){
+        global $dbh;
+        $dbh->exec("use solar");
+        $sql = "SELECT cname,date,sn,power FROM historyPow "
+                . "join inverter using (no) join factory on inverter.appertain=factory.no "
+                . "where factory.no=:no and date >=adddate(:start, interval 1 day) and date <adddate(:end, interval 1 day) "
+                . "order by date";
+        $ps = $dbh->prepare($sql);
+        $ps->execute(array(":no"=>$no, ":start"=>date("Y-m-d", $firstDate), ":end"=>date("Y-m-d", $overDate)));
+        $rs = $ps->fetchAll(PDO::FETCH_ASSOC);
+        ob_start();
+        var_dump($rs);
+               $obCon = ob_get_contents();
+        syslog(LOG_INFO,"get var dump: " . $obCon);        
+        ob_end_clean();
+        $dbh->exec("use meteor");
+        return $rs;
+    }
 ?>

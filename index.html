@@ -3,18 +3,27 @@
 <head>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.6.0/Chart.js"></script>
+    <script src="js/function.js"></script>
+    <script src="js/jquery-dateFormat.min.js"></script>
     <script>
         var urlPrefix = "queryCity.php?type=";
-        var defaultChartData = {labels:["1","2"],datasets:[{label:"first",data:["0","0"]}]};
-        var config = {
-            type:"line",
-            data: defaultChartData
-            };
-            
-        var solarConfig = {
-            type:"line",
-            data: defaultChartData
-            };
+        var factoryJSON;
+        
+        defaultStationName = "氣象站日照";
+        meteorTimeAxis = new Array(1,2);            
+        meteorXY = new XYDataSet(meteorTimeAxis);
+        meteorSunAxis = new Array(0,0);
+        meteorXY.push("sun", meteorSunAxis, window.chartColors.red);
+        meteorChartConf = new ChartConfig(meteorXY);
+        meteorChartConf.chartName(defaultStationName)
+
+        defaultSolarName = "太陽能發電";
+        solarTimeAxis = new Array(1,2);            
+        solarXY = new XYDataSet(solarTimeAxis);
+        Yaxis = new Array(0,0);
+        solarXY.push("default", Yaxis, window.chartColors.red);
+        solarChartConf = new ChartConfig(solarXY);
+        solarChartConf.chartName(defaultSolarName);
 
         $().ready(funA("init"));
 
@@ -30,7 +39,6 @@
                     var length = obj.length;
                     var type = obj[length-1];
                     if(type == "init"){
-                        window.chart = new Chart($("#chart"),config);
                         for(i =0; i <= 3; i++){
                             if( i == 0)
                                 dom = $("#area");
@@ -44,48 +52,87 @@
                             }
                         }
                         
-                        window.solar = obj[length-2];
-                        window.solarChart = new Chart($("#solarchart"),solarConfig);
-                        for(i = 0; i < window.solar.length; i++){                            
-                            $("#solar_factory").append(new Option(window.solar[i].cname, window.solar[i].factoryNo));
+                        factoryData = initFactory();
+                        console.log(factoryData);
+                        factoryJSON = JSON.parse(factoryData);
+                        for(i = 0; i < factoryJSON.length; i++){
+                            $("#solar_factory").append(new Option(factoryJSON[i].cname, factoryJSON[i].no));
                         }
                         
-                        for(i =1; i <=window.solar[0].amount; i++){
-                            var no = parseInt(window.solar[0].no)+i-1;
-                            $("#inverterNo").append(new Option(i, no));
-                        }
+                        window.sunChart = new Chart($("#sunChart"),meteorChartConf);
+                        window.solarChart = new Chart($("#solarChart"),solarChartConf);
                     }
                     rebuild(msg);
-                    //傳入的點座標重繪及統計y
+                    
+                    //傳入的點座標重繪及統計y          
                     if(type == "submit"){
-                        var json = obj[0];
-                        if(!json.labels.length == 0){
-                            config.data = json;                            
-                        } else{
-                            config.data = defaultChartData;
+                        console.log(obj);                        
+                        //清空內容，包含子元素
+                        $("#ids").empty();
+                        
+                        //清除舊折線圖資料，塞入新資料陣列
+                        meteorTimeAxis.length = 0;
+                        obj[0].labels.forEach(function(value){
+                            meteorTimeAxis.push(value);
+                        })                        
+                        meteorSunAxis.length = 0;
+                        obj[0].datasets[0].data.forEach(function(value){
+                            meteorSunAxis.push(value);
+                        })
+                        meteorChartConf.options.title.text = $("#station option:selected").text() + defaultStationName;
+                        window.sunChart.update();
+                        
+                        solarTimeAxis.length = 0;
+                        solarChartConf.data.datasets.length = 0;
+                        solarChartConf.options.title.text = $("#solar_factory option:selected").text() + defaultSolarName;
+                        
+                        let ids;
+                        for(let i = 0; i<factoryJSON.length; i++){
+                            solarName = $("#solar_factory option:selected").text();
+                            if(factoryJSON[i].cname == solarName){
+                                ids = factoryJSON[i].ids;
+                                break;
+                            }
                         }
-                        window.chart.update();
                         
-                        var data = json.datasets[0].data;
-                        var sum = 0; 
-                        data.forEach(function(e){
-                           sum += parseFloat(e);
-                        });
-                        $("#sum").text(sum.toFixed(1));
-                        
-                        if(!obj[1].labels.length == 0){
-                            solarConfig.data = obj[1];
+                        let timeSet = new Set();
+                        let idsSet = new Set(ids);
+                        let idMap = new Map();
+                        idsSet.forEach(function(value){
+                            idMap.set(value, new Array());
+                        })
 
-                        } else{
-                            solarConfig.data = defaultChartData;
-                        }
+                        unpackSolarPack(idsSet, obj[1], timeSet, idMap);
+                        
+                        timeSet.forEach(function(value){
+                            let tmpDate = new Date(Date.parse(value))
+                            tmpDate.setDate(tmpDate.getDate() - 1);
+                            solarTimeAxis.push($.format.date(tmpDate.toString(), "yyyy/MM/dd"));
+                        });
+                        
+                        idMap.forEach(function(value,key,map){
+                            solarChartConf.data.push(key, value, window.colorSet[parseInt(key-1)]);
+                        })
+                        
                         window.solarChart.update();
+                        
+                        countAnddisplay(meteorSunAxis, $("#sum"));
+                        
+                        //發電量總計
+                        let sumTotal=0;
+                        ids.forEach(function(value){
+                            let idNo = "id"+value;
+                            $("#ids").append("<p id="+idNo+"></p>");
+                            sumTotal += countAnddisplay(idMap.get(value), $("#id"+value), idNo+" ");
+                        })                        
+                        $("#ids").append("<p id=total></p>");
+                        $("#total").text("total "+sumTotal);
                     }
+          
                 }
             }).then(function(msg){
                 
             });
-
         }
 
         function funB(){
@@ -100,6 +147,60 @@
             for(i =1; i <=window.solar[index].amount; i++){
                 var no = parseInt(window.solar[index].no)+i-1;
                 $("#inverterNo").append(new Option(i, no));
+            }
+        }
+        
+        function countAnddisplay(dataSet, jqueryId, prefixStr){
+            let sum=0;
+            if(typeof prefixStr == "undefined") prefixStr = "";
+            
+            let type; 
+            if( dataSet.length != 0){
+                //首值會有零的可能，需排除
+                for(let i=0; i<dataSet.length; i++){
+                    if(dataSet[i] == 0) continue;
+                    
+                    type = dataSet[i] % 1 == 0? "int" : "float";
+                    break;
+                }
+                if(type == "int"){
+                    for(let i=0; i<dataSet.length; i++){                        
+                        if(dataSet[i] == null) continue;
+                        sum += parseInt(dataSet[i]);
+                    }
+                    jqueryId.text(prefixStr + sum);
+                }else {
+                    for(let i=0; i<dataSet.length; i++){
+                        if(dataSet[i] == null) continue;
+                        sum += parseFloat(dataSet[i]);
+                    }
+                    jqueryId.text(prefixStr + sum.toFixed(1));
+                }
+            }
+            
+            return sum;
+        }
+        
+        function unpackSolarPack(idsSet, target, timeSet, idMap){
+            let idSetFloating;
+            for(let i=0; i<target.length; i++){
+                if(i == 0){
+                    idSetFloating = new Set(idsSet);
+                }
+                dateStr = target[i].date.split(" ")[0];
+                if(!timeSet.has(dateStr) && i > 0){
+                    if(idSetFloating.size != 0){
+                        idSetFloating.forEach(function(value){
+                            powerArray = idMap.get(value);
+                            powerArray.push(null);
+                        })
+                    }
+                    idSetFloating = new Set(idsSet);
+                }
+                timeSet.add(dateStr);
+                powerArray = idMap.get(target[i].sn);
+                powerArray.push(target[i].power);
+                idSetFloating.delete(target[i].sn);
             }
         }
         
@@ -142,8 +243,8 @@
     <select name="area" id="area" onchange="funA('area')"></select>
     <select name="city" id="city" onchange="funA('city')"></select>
     <select name="station" id="station"></select>
-    <input name="time1" type="date">
-    <input name="time2" type="date"><br>
+    <input name="start" type="date">
+    <input name="end" type="date"><br>
     <select name="solar_factory" id="solar_factory" onchange="funB()"></select>
     <select name="inverterNo" id="inverterNo" ></select>
     <label style="width: 100px" id="powerVal"></label>
@@ -155,10 +256,11 @@
 </div>
 <br>
 <div style="width:600px;height:600px">
-    <canvas id="chart"></canvas>
+    <canvas id="sunChart"></canvas>
 </div>
+<div id="ids"></div>
 <div style="width:600px;height:600px">
-    <canvas id="solarchart"></canvas>
+    <canvas id="solarChart"></canvas>
 </div>
 </body>
 </html>

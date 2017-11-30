@@ -1,16 +1,36 @@
 <?php
+/*
+ * 這邊假定發電廠站台的inverter id都是連續的
+ */
     include("libs/baseSetting.php");
     $dateformat = "Y/m/d";
     $dbh->exec("use solar");
     
     $type = $_GET["type"];
-    
+    //$type = "init";
     switch($type){
         case "init":
-            $sql = "select factory.no,factory.cname,inverter.no as id,count(inverter.sn)as amount from inverter "
-                . "join factory on inverter.appertain = factory.no group by factory.cname order by appertain,sn";
+            $rsSet = array();
+            $sql = "select no,cname from factory order by no";                
             $ps = $dbh->query($sql);
-            $rs = $ps->fetchAll(PDO::FETCH_ASSOC);
+            while($rs = $ps->fetch(PDO::FETCH_ASSOC)){
+                $factoryArray = array();
+                $factoryArray["no"] = $rs["no"];
+                $factoryArray["cname"] = $rs["cname"];
+                
+                $idArray = array();
+                $sql = "select sn from inverter "
+                    . "join factory on inverter.appertain=factory.no where appertain = :no";
+                $psInv = $dbh->prepare($sql);
+                $psInv->execute(array("no"=>$rs["no"]));
+
+                while($rs1 = $psInv->fetch()){
+                    $idArray[] = $rs1[0];
+                }
+                $factoryArray["ids"] = $idArray;
+                
+                $rsSet[] = $factoryArray;
+            }
             break;
         
         case "req":
@@ -19,10 +39,10 @@
                 . "where factory.no = :no order by stamp";
             $ps = $dbh->prepare($sql);
             $ps->execute(array(":start"=>$_GET["start"], ":end"=>$_GET["end"], ":no"=>$_GET["no"]));
-            $rs=$ps->fetchAll(PDO::FETCH_ASSOC);
+            $rsSet=$ps->fetchAll(PDO::FETCH_ASSOC);
             break;
     }
     
-    $pack = json_encode($rs);
-    echo $pack;
+    $pack = json_encode($rsSet);
+    echo $pack;        
 ?>

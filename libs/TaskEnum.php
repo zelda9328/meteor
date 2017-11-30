@@ -1,4 +1,5 @@
 <?php
+//need pecl
 class TaskEnum extends SplEnum{
     const init = 9;
     const area = 8;
